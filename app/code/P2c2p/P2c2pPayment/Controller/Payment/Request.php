@@ -13,8 +13,8 @@ class Request extends \P2c2p\P2c2pPayment\Controller\AbstractCheckoutRedirectAct
 
 
 	public function log($data){
-		$writer = new \Zend\Log\Writer\Stream(BP . '/var/log/p2c2p.log');
-            $logger = new \Zend\Log\Logger();
+		$writer = new \Zend_Log_Writer_Stream(BP . '/var/log/p2c2p.log');
+			$logger = new \Zend_Log();
             $logger->addWriter($writer);
             $logger->info($data);
 	}
@@ -26,7 +26,7 @@ class Request extends \P2c2p\P2c2pPayment\Controller\AbstractCheckoutRedirectAct
 		$orderId = $this->getCheckoutSession()->getLastRealOrderId();
 
 		if(empty($orderId)) {
-			die("Aunthentication Error: Order is is empty.");
+			die("Aunthentication Error: Order is empty.");
 		}
 
 		$order = $this->getOrderDetailByOrderId($orderId);
@@ -78,20 +78,24 @@ class Request extends \P2c2p\P2c2pPayment\Controller\AbstractCheckoutRedirectAct
 		$objectManager = \Magento\Framework\App\ObjectManager::getInstance();
 		$storeManager = $objectManager->get('\Magento\Store\Model\StoreManagerInterface');
 		$baseurl = $storeManager->getStore()->getBaseUrl(\Magento\Framework\UrlInterface::URL_TYPE_WEB);
-				
+		$storecode = $storeManager->getStore()->getCode();
+		//$baseurl = $storeManager->getStore()->getBaseUrl() . $storecode
+		//$storeManager->getStore()->getBaseUrl(Mage_Core_Model_Store::URL_TYPE_LINK);
+		
 		//Create basic form array.
 		$fun2c2p_args = array(
 			'payment_description'   => substr($product_name,0,240),
-			'order_id'              => $this->getCheckoutSession()->getLastRealOrderId(),
-			'invoice_no'            => $this->getCheckoutSession()->getLastRealOrderId(),		
-			'amount'                => round($order->getGrandTotal(),2),
+			'order_id'              => 'COS_'.$this->getCheckoutSession()->getLastRealOrderId(),
+			'invoice_no'            => 'COS_'.$this->getCheckoutSession()->getLastRealOrderId(),		
+			'amount'                => round($order->getBaseGrandTotal(),2),
 			'customer_email'        => $cust_email,
 			'stored_card_unique_id'	=> !empty($strTokenKey) ? $strTokenKey : '',
-			'result_url_1' 			=> $baseurl.'p2c2p/payment/response'
-			);
+			'result_url_1' 			=> '',     //$baseurl.$storecode.'/p2c2p/payment/response',
+			'result_url_2' 			=> ''      //$baseurl.$storecode.'/p2c2p/payment/response',
+			//result url defined in response helper.	
+		);
 
-		//$this->log(json_encode($fun2c2p_args));
-		$this->log('in_request');
+		$this->log(json_encode($fun2c2p_args));
 
 		echo $this->getP2c2pRequest($fun2c2p_args,$customerSession->isLoggedIn());	
 	}

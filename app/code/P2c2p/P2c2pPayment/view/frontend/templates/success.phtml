@@ -12,7 +12,11 @@ $strCurrencyCode = $this->getBaseCurrencyCode();
 $home_url = $block->getUrl();
 $channel_response_code = $request['channel_response_code'];
 $current_order = $request['order_id'];
-$order_id = $request['order_id'];
+
+$ORDER_NUMBER_INITIAL="Test_";
+
+$order_id = str_replace($ORDER_NUMBER_INITIAL, "", $request['order_id']);
+
 $transaction_ref = $request['transaction_ref'];
 
 $objCustomerOrderDetail  = $this->getOrderDetails($order_id);

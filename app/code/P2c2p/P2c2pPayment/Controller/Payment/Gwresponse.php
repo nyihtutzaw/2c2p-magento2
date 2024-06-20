@@ -1,37 +1,31 @@
 <?php
+/*
+ * Created by 2C2P
+ * Date 20 June 2017
+ * This Gwresponse action method is responsible for handle the 2c2p payment gateway response serverside.
+ */
+
+use Magento\Framework\App\RequestInterface;
+use Magento\Framework\App\Request\InvalidRequestException;
+
 namespace P2c2p\P2c2pPayment\Controller\Payment;
 
-class Response extends \P2c2p\P2c2pPayment\Controller\AbstractCheckoutRedirectAction implements \Magento\Framework\App\CsrfAwareActionInterface
+class Gwresponse extends \P2c2p\P2c2pPayment\Controller\AbstractCheckoutRedirectAction
 {
 
-	// sandbox doens't access same order number. Initialize here to get different order numbers
-	private $ORDER_NUMBER_INITIAL="Test_";
-
 	public function log($data){
-		$writer = new \Zend_Log_Writer_Stream(BP . '/var/log/p2c2p.log');
-		$logger = new \Zend_Log();
+		$writer = new \Zend\Log\Writer\Stream(BP . '/var/log/p2c2p.log');
+            $logger = new \Zend\Log\Logger();
             $logger->addWriter($writer);
             $logger->info($data);
 	}
-
-	public function createCsrfValidationException(\Magento\Framework\App\RequestInterface $request): ? \Magento\Framework\App\Request\InvalidRequestException
-    {
-        return null;
-    }
-
-    public function validateForCsrf(\Magento\Framework\App\RequestInterface $request): ?bool
-    {
-        return true;
-    }
            
 
 	public function execute()
-	{	
-	    $this->log('----new response----');
+	{		
 		//If payment getway response is empty then redirect to home page directory.	
-		//$this->log(json_encode($_REQUEST));
-		$this->log($_SERVER['REQUEST_URI']);
-		$this->log(json_encode($_POST));
+		$this->log(json_encode($_REQUEST));
+		$this->log('s2s handling');
 // 		if(empty($_REQUEST) || empty($_REQUEST['order_id'])){
 // 			$this->_redirect('');
 // 			return;
@@ -43,12 +37,11 @@ class Response extends \P2c2p\P2c2pPayment\Controller\AbstractCheckoutRedirectAc
 		$isValidHash  = $hashHelper->isValidHashValue($_REQUEST,$configHelper['secretKey']);
 
 		//Get Payment getway response to variable.
-		$payment_status_code = isset($_REQUEST['payment_status'])?$_REQUEST['payment_status']:"";
+		$payment_status_code = $_REQUEST['payment_status'];
 		$transaction_ref 	 = $_REQUEST['transaction_ref']; 
 		$approval_code   	 = $_REQUEST['approval_code'];
 		$payment_status  	 = $_REQUEST['payment_status'];
 		$order_id 		 	 = $_REQUEST['order_id'];
-		$order_id = str_replace($this->ORDER_NUMBER_INITIAL, "", $order_id);
 		
 		//Get the object of current order.
 		$order = $this->getOrderDetailByOrderId($order_id);
@@ -61,21 +54,18 @@ class Response extends \P2c2p\P2c2pPayment\Controller\AbstractCheckoutRedirectAc
 
 		//Check whether hash value is valid or not If not valid then redirect to home page when hash value is wrong.
 		if(!$isValidHash) {
+		    if($order->getStatus() == "Pending_2C2P"){
 			$order->setState(\Magento\Sales\Model\Order::STATUS_FRAUD);
 			$order->setStatus(\Magento\Sales\Model\Order::STATUS_FRAUD);
 			$order->save();
+		    }
 			
 			$this->_redirect('');
 			return;
 		}
-		
 
-		$metaDataHelper = $this->getMetaDataHelper();	
-		
-		if($order->getStatus() == "Pending_2C2P"){
+		$metaDataHelper = $this->getMetaDataHelper();		
 		$metaDataHelper->savePaymentGetawayResponse($_REQUEST,$order->getCustomerId());
-		}
-		
 
 		//check payment status according to payment response.
 		if(strcasecmp($payment_status_code, "000") == 0) {			
@@ -109,28 +99,25 @@ class Response extends \P2c2p\P2c2pPayment\Controller\AbstractCheckoutRedirectAc
 					$metaDataHelper->saveUserToken($arrayTokenData);					
 				}
 			}
+			
 			if($order->getStatus() == "Pending_2C2P"){
             // create invoice
             $this->prepareInvoice($order);
-            $order->addStatusHistoryComment($_REQUEST['channel_response_desc']);
 			//Set the complete status when payment is completed.
 			$order->setState(\Magento\Sales\Model\Order::STATE_PROCESSING);
 			$order->setStatus(\Magento\Sales\Model\Order::STATE_PROCESSING);
-			$order->save();			
+			$order->save();	
 			}
 
-			$this->executeSuccessAction($_REQUEST);
 			return;
 
 		} else if(strcasecmp($payment_status_code, "001") == 0) {			
 			//Set the Pending payment status when payment is pending. like 123 payment type.
-// 			$order->setState("Pending_2C2P");
-// 			$order->setStatus("Pending_2C2P");
-
-			$order->addStatusHistoryComment($_REQUEST['channel_response_desc']);
+			if($order->getStatus() == "Pending_2C2P"){
+			$order->setState("Pending_2C2P");
+			$order->setStatus("Pending_2C2P");
 			$order->save();
-
-			$this->executeSuccessAction($_REQUEST);
+			}
 			return;
 		} else if(strcasecmp($payment_status_code, "002") == 0) {			
 			//Set the Pending payment status when payment is canceled. like 123 payment type.
@@ -141,7 +128,6 @@ class Response extends \P2c2p\P2c2pPayment\Controller\AbstractCheckoutRedirectAc
 			$order->save();
 			}
 
-			$this->executeCancelAction();
 			return;
 
 		} else {
@@ -153,7 +139,6 @@ class Response extends \P2c2p\P2c2pPayment\Controller\AbstractCheckoutRedirectAc
 			$order->save();
 			}
 
-			$this->executeCancelAction();
 			return;
 		}
 	}

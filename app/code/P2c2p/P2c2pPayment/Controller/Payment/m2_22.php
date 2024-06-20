@@ -4,9 +4,12 @@ namespace P2c2p\P2c2pPayment\Controller\Payment;
 class Response extends \P2c2p\P2c2pPayment\Controller\AbstractCheckoutRedirectAction
 {
 
+	// sandbox doens't access same order number. Initialize here to get different order numbers
+	private $ORDER_NUMBER_INITIAL="Test_";
+
 	public function log($data){
-		$writer = new \Zend\Log\Writer\Stream(BP . '/var/log/p2c2p.log');
-            $logger = new \Zend\Log\Logger();
+		$writer = new \Zend_Log_Writer_Stream(BP . '/var/log/p2c2p.log');
+		$logger = new \Zend_Log();
             $logger->addWriter($writer);
             $logger->info($data);
 	}
@@ -14,14 +17,15 @@ class Response extends \P2c2p\P2c2pPayment\Controller\AbstractCheckoutRedirectAc
 
 	public function execute()
 	{		
+		$this->log('----new response----');
 		//If payment getway response is empty then redirect to home page directory.	
 		//$this->log(json_encode($_REQUEST));
-		$this->log('in_response');
-		$this->log('order_id'.$_REQUEST['order_id']);
-		if(empty($_REQUEST) || empty($_REQUEST['order_id'])){
-			$this->_redirect('');
-			return;
-		}
+		$this->log($_SERVER['REQUEST_URI']);
+		$this->log(json_encode($_POST));
+// 		if(empty($_REQUEST) || empty($_REQUEST['order_id'])){
+// 			$this->_redirect('');
+// 			return;
+// 		}
 
 		$hashHelper   = $this->getHashHelper();
 		$configHelper = $this->getConfigSettings();
@@ -34,6 +38,7 @@ class Response extends \P2c2p\P2c2pPayment\Controller\AbstractCheckoutRedirectAc
 		$approval_code   	 = $_REQUEST['approval_code'];
 		$payment_status  	 = $_REQUEST['payment_status'];
 		$order_id 		 	 = $_REQUEST['order_id'];
+		$order_id = str_replace($this->ORDER_NUMBER_INITIAL, "", $order_id);
 		
 		//Get the object of current order.
 		$order = $this->getOrderDetailByOrderId($order_id);
@@ -54,8 +59,11 @@ class Response extends \P2c2p\P2c2pPayment\Controller\AbstractCheckoutRedirectAc
 			return;
 		}
 
-		$metaDataHelper = $this->getMetaDataHelper();		
-		$metaDataHelper->savePaymentGetawayResponse($_REQUEST,$order->getCustomerId());
+		$metaDataHelper = $this->getMetaDataHelper();	
+
+		if($order->getStatus() == "Pending_2C2P"){
+			$metaDataHelper->savePaymentGetawayResponse($_REQUEST,$order->getCustomerId());
+			}
 
 		//check payment status according to payment response.
 		if(strcasecmp($payment_status_code, "000") == 0) {			
@@ -90,25 +98,51 @@ class Response extends \P2c2p\P2c2pPayment\Controller\AbstractCheckoutRedirectAc
 				}
 			}
 
+			if($order->getStatus() == "Pending_2C2P"){
+            // create invoice
+			$this->prepareInvoice($order);
+			$order->addStatusHistoryComment($_REQUEST['channel_response_desc']);
 			//Set the complete status when payment is completed.
 			$order->setState(\Magento\Sales\Model\Order::STATE_PROCESSING);
 			$order->setStatus(\Magento\Sales\Model\Order::STATE_PROCESSING);
 			$order->save();				
+			}
 
 			$this->executeSuccessAction($_REQUEST);
 			return;
 
 		} else if(strcasecmp($payment_status_code, "001") == 0) {			
 			//Set the Pending payment status when payment is pending. like 123 payment type.
-			$order->setState("Pending_2C2P");
-			$order->setStatus("Pending_2C2P");
+			// $order->setState("Pending_2C2P");
+			// $order->setStatus("Pending_2C2P");
+			// $order->save();
+			$order->addStatusHistoryComment($_REQUEST['channel_response_desc']);
 			$order->save();
 
 			$this->executeSuccessAction($_REQUEST);
 			return;
 
+		} else if(strcasecmp($payment_status_code, "002") == 0) {	
+			if($order->getStatus() == "Pending_2C2P"){		
+			//Set the Pending payment status when payment is pending. like 123 payment type.
+			$order->setState(\Magento\Sales\Model\Order::STATE_CANCELED);
+			$order->setStatus(\Magento\Sales\Model\Order::STATE_CANCELED);
+			$order->addStatusHistoryComment($_REQUEST['channel_response_desc']);
+			$order->save();
+			}
+
+			$this->executeCancelAction();
+			return;
+
 		} else {
 			//If payment status code is cancel/Error/other.
+			if($order->getStatus() == "Pending_2C2P"){
+			$order->setState(\Magento\Sales\Model\Order::STATE_CANCELED);
+			$order->setStatus(\Magento\Sales\Model\Order::STATE_CANCELED);
+			$order->addStatusHistoryComment($_REQUEST['channel_response_desc']);
+			$order->save();
+			}
+
 			$this->executeCancelAction();
 			return;
 		}
